@@ -6,15 +6,17 @@ import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.ActivityCompat
+import com.example.flutter_gps.model.Location
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.LocationSettingsRequest
 import com.google.android.gms.location.LocationSettingsResponse
 import com.google.android.gms.tasks.Task
+import io.flutter.plugin.common.MethodChannel
 
 
-class GpsHandler(private val activity: Activity, val onGetLocation: (lat: Double, long: Double) -> Unit, val onFailureGetLocation: () -> Unit) {
+class GpsHandler(private val activity: Activity) {
 
     companion object {
         const val REQUEST_GPS_PERIMSSION = 1
@@ -22,7 +24,10 @@ class GpsHandler(private val activity: Activity, val onGetLocation: (lat: Double
     }
 
     private var permissionGps: Boolean = false
-    private var task: Task<LocationSettingsResponse>? = null
+    private var locationSettingsResponseTask: Task<LocationSettingsResponse>? = null
+
+    lateinit var onSuccessGetLocation: (Double, Double) -> Unit
+    lateinit var onFailureGetLocation: () -> Unit
 
     fun requestPermissionGps(requestCode: Int) {
         if (Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP_MR1) {
@@ -57,11 +62,21 @@ class GpsHandler(private val activity: Activity, val onGetLocation: (lat: Double
         }
     }
 
+    fun onMethodGetCurrentLocation(result: MethodChannel.Result, requestCode: Int){
+        initGetCurrentLocationResult(result)
+        requestPermissionGps(requestCode)
+    }
+
+    fun initGetCurrentLocationResult(result: MethodChannel.Result) {
+        onSuccessGetLocation = { lat, long -> result.success(Location(lat, long).toString()) }
+        onFailureGetLocation = { result.error("ERROR", "Failed to get location", null) }
+    }
+
     fun getCurrentLocation() {
         val mFusedLocationClient = LocationServices.getFusedLocationProviderClient(activity)
         mFusedLocationClient.lastLocation.apply {
             addOnSuccessListener {
-                onGetLocation(it.latitude, it.longitude)
+                onSuccessGetLocation(it.latitude, it.longitude)
             }
             addOnFailureListener {
                 onFailureGetLocation()
@@ -70,7 +85,7 @@ class GpsHandler(private val activity: Activity, val onGetLocation: (lat: Double
     }
 
     fun settingsrequest() {
-        if (task != null){
+        if (locationSettingsResponseTask != null) {
             getCurrentLocation()
             return
         }
@@ -83,7 +98,7 @@ class GpsHandler(private val activity: Activity, val onGetLocation: (lat: Double
                 .addLocationRequest(locationRequest)
         builder.setAlwaysShow(true) //this is the key ingredient
 
-        task = LocationServices.getSettingsClient(activity).checkLocationSettings(builder.build()).apply {
+        locationSettingsResponseTask = LocationServices.getSettingsClient(activity).checkLocationSettings(builder.build()).apply {
             addOnSuccessListener {
                 if (it.locationSettingsStates.isLocationPresent) {
                     getCurrentLocation()

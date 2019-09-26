@@ -1,7 +1,5 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter_gps/channel/gps/channel_gps.dart';
 
 void main() => runApp(MyApp());
 
@@ -25,7 +23,7 @@ class MainPage extends StatefulWidget {
 
 class _MainPageState extends State<MainPage> {
   String txt = 'Activate GPS';
-  var mc = MethodChannel('gps');
+  GpsChannel gpsChannel = GpsChannel();
 
   @override
   Widget build(BuildContext context) {
@@ -40,19 +38,12 @@ class _MainPageState extends State<MainPage> {
   }
 
   void activateGps() async {
-    try {
-      await mc.invokeMethod('turn on gps').then((result) {
-        Map map = json.decode(result);
-        var lat = map['lat'];
-        var long = map['long'];
-        setState(() {
-          txt = 'Lat: $lat, long: $long' ?? 'Failed activate GPS';
-        });
-      });
-    } catch (e) {
+    await gpsChannel.getCurrentLocation().then((location) {
+      // Todo: Use bloc to change set state!
       setState(() {
-        txt = e;
+        txt = 'Lat: ${location.lat}, long: ${location.long}' ??
+            'Failed activate GPS';
       });
-    }
+    });
   }
 }

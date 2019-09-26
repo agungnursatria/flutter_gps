@@ -15,19 +15,11 @@ class MainActivity : FlutterActivity() {
         super.onCreate(savedInstanceState)
         GeneratedPluginRegistrant.registerWith(this)
 
-        MethodChannel(flutterView, "gps").setMethodCallHandler { methodCall, result ->
+        gpsHandler = GpsHandler(this)
+
+        MethodChannel(flutterView, "com.payfazz.Fazzcard/gps").setMethodCallHandler { methodCall, result ->
             when (methodCall.method) {
-                "turn on gps" -> {
-                    gpsHandler = GpsHandler(this,
-                            onGetLocation = { lat, long ->
-                                result.success(Loc(lat, long).toString())
-                            },
-                            onFailureGetLocation = {
-                                result.error("ERROR", "Failed to get location", null)
-                            }
-                    )
-                    gpsHandler!!.requestPermissionGps(GpsHandler.REQUEST_GPS_PERIMSSION)
-                }
+                "get_current_location" -> gpsHandler!!.onMethodGetCurrentLocation(result, GpsHandler.REQUEST_GPS_PERIMSSION)
             }
         }
     }
@@ -44,11 +36,5 @@ class MainActivity : FlutterActivity() {
             GpsHandler.REQUEST_CHECK_SETTINGS -> if (resultCode == Activity.RESULT_OK) gpsHandler!!.settingsrequest()
             else -> super.onActivityResult(requestCode, resultCode, data)
         }
-    }
-}
-
-data class Loc(val lat: Double, val long: Double) {
-    override fun toString(): String {
-        return """{"lat": "$lat", "long": "$long"}"""
     }
 }
