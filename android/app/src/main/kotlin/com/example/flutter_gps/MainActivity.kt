@@ -3,6 +3,7 @@ package com.example.flutter_gps
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 
 import io.flutter.app.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
@@ -33,7 +34,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         when (requestCode){
-            GpsHandler.REQUEST_CHECK_SETTINGS -> if (resultCode == Activity.RESULT_OK) gpsHandler!!.settingsrequest()
+            GpsHandler.REQUEST_CHECK_SETTINGS -> if (resultCode == Activity.RESULT_CANCELED) Toast.makeText(this, getString(R.string.failed_turn_on_request_gps), Toast.LENGTH_SHORT).show() else if (resultCode == Activity.RESULT_OK) gpsHandler!!.locService.startGetLocation()
             else -> super.onActivityResult(requestCode, resultCode, data)
         }
     }

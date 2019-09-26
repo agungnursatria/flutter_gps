@@ -7,13 +7,16 @@ class GpsChannel {
   MethodChannel channel = const MethodChannel('com.payfazz.Fazzcard/gps');
 
   Future<Location> getCurrentLocation() async {
-    return await channel
-        .invokeMethod('get_current_location')
-        .then((stringResponse) {
-      Map map = json.decode(stringResponse);
-      return Location.parseJson(map);
-    }).catchError((e) {
-      print(e);
-    });
+    try {
+      return await channel
+          .invokeMethod('get_current_location')
+          .then((stringResponse) {
+        Map map = json.decode(stringResponse);
+        return Location.parseJson(map);
+      });
+    } catch (e) {
+      print(e.toString());
+      return Location();
+    }
   }
 }

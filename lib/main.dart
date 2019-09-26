@@ -41,8 +41,7 @@ class _MainPageState extends State<MainPage> {
     await gpsChannel.getCurrentLocation().then((location) {
       // Todo: Use bloc to change set state!
       setState(() {
-        txt = 'Lat: ${location.lat}, long: ${location.long}' ??
-            'Failed activate GPS';
+        txt = 'Lat: ${location.lat}, long: ${location.long}';
       });
     });
   }

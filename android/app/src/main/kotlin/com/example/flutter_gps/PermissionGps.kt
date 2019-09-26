@@ -2,16 +2,18 @@ package com.example.flutter_gps
 
 import android.Manifest
 import android.app.Activity
+import android.content.Intent
 import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Looper
+import android.provider.Settings
+import android.widget.Toast
 import androidx.core.app.ActivityCompat
+import com.example.flutter_gps.helper.Helper
 import com.example.flutter_gps.model.Location
 import com.google.android.gms.common.api.ResolvableApiException
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.LocationSettingsRequest
-import com.google.android.gms.location.LocationSettingsResponse
+import com.google.android.gms.location.*
 import com.google.android.gms.tasks.Task
 import io.flutter.plugin.common.MethodChannel
 
@@ -24,12 +26,27 @@ class GpsHandler(private val activity: Activity) {
     }
 
     private var permissionGps: Boolean = false
-    private var locationSettingsResponseTask: Task<LocationSettingsResponse>? = null
 
     lateinit var onSuccessGetLocation: (Double, Double) -> Unit
-    lateinit var onFailureGetLocation: () -> Unit
+    lateinit var onFailureGetLocation: (String) -> Unit
 
-    fun requestPermissionGps(requestCode: Int) {
+    lateinit var locService: LocationUpdateUsingLocationService
+
+    fun onMethodGetCurrentLocation(result: MethodChannel.Result, requestCode: Int) {
+        initGetCurrentLocationResult(result)
+        requestPermissionGps(requestCode)
+    }
+
+    fun handlePermissionResult(grantResults: IntArray) {
+        permissionGps = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED && grantResults[1] == PackageManager.PERMISSION_GRANTED
+        if (permissionGps) {
+            getLocation()
+        } else {
+            onFailureGetLocation("Gps permission is not granted")
+        }
+    }
+
+    private fun requestPermissionGps(requestCode: Int) {
         if (Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP_MR1) {
             permissionGps = ActivityCompat.checkSelfPermission(
                     activity.applicationContext,
@@ -45,82 +62,107 @@ class GpsHandler(private val activity: Activity) {
                         requestCode
                 )
             } else {
-                settingsrequest()
+                getLocation()
             }
         } else {
             permissionGps = true
-            settingsrequest()
+            getLocation()
         }
     }
 
-    fun handlePermissionResult(grantResults: IntArray) {
-        permissionGps = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED && grantResults[1] == PackageManager.PERMISSION_GRANTED
-        if (permissionGps) {
-            settingsrequest()
-        } else {
-            onFailureGetLocation()
-        }
-    }
-
-    fun onMethodGetCurrentLocation(result: MethodChannel.Result, requestCode: Int){
-        initGetCurrentLocationResult(result)
-        requestPermissionGps(requestCode)
-    }
-
-    fun initGetCurrentLocationResult(result: MethodChannel.Result) {
+    private fun initGetCurrentLocationResult(result: MethodChannel.Result) {
         onSuccessGetLocation = { lat, long -> result.success(Location(lat, long).toString()) }
-        onFailureGetLocation = { result.error("ERROR", "Failed to get location", null) }
+        onFailureGetLocation = { errorMessage -> result.error("ERROR", errorMessage, null) }
     }
 
-    fun getCurrentLocation() {
-        val mFusedLocationClient = LocationServices.getFusedLocationProviderClient(activity)
-        mFusedLocationClient.lastLocation.apply {
-            addOnSuccessListener {
-                onSuccessGetLocation(it.latitude, it.longitude)
-            }
-            addOnFailureListener {
-                onFailureGetLocation()
-            }
+    private fun getLocation(){
+        if (Helper.isGooglePlayServicesAvailable(activity)){
+            locService = LocationUpdateUsingLocationService(activity, onSuccessGetLocation, onFailureGetLocation)
+            locService.initGetLocation()
+        } else {
+            onFailureGetLocation("Has not been implemented")
         }
     }
+}
 
-    fun settingsrequest() {
-        if (locationSettingsResponseTask != null) {
-            getCurrentLocation()
-            return
-        }
+class LocationUpdateUsingLocationService(private val activity: Activity, private val onSuccessGetLocation: (Double, Double) -> Unit, private val onFailureGetLocation: (String) -> Unit) {
+    private var mFusedLocationClient: FusedLocationProviderClient
+    private var locationRequest: LocationRequest
+    private var builder: LocationSettingsRequest.Builder
+    private var mLocationCallback: LocationCallback
 
-        val locationRequest = LocationRequest.create()
+    private var locationSettingsResponseTask: Task<LocationSettingsResponse>? = null
+
+    init {
+        mFusedLocationClient = LocationServices.getFusedLocationProviderClient(activity)
+
+        locationRequest = LocationRequest.create()
         locationRequest.priority = LocationRequest.PRIORITY_HIGH_ACCURACY
         locationRequest.interval = 30 * 1000
         locationRequest.fastestInterval = 5 * 1000
-        val builder = LocationSettingsRequest.Builder()
+        builder = LocationSettingsRequest.Builder()
                 .addLocationRequest(locationRequest)
         builder.setAlwaysShow(true) //this is the key ingredient
 
-        locationSettingsResponseTask = LocationServices.getSettingsClient(activity).checkLocationSettings(builder.build()).apply {
-            addOnSuccessListener {
-                if (it.locationSettingsStates.isLocationPresent) {
-                    getCurrentLocation()
-                } else {
-                    onFailureGetLocation()
+
+        mLocationCallback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult?) {
+                if (locationResult == null) {
+                    return
                 }
+
+                for (location in locationResult.locations) {
+                    if (location != null) {
+                        onSuccessGetLocation(location.latitude, location.longitude)
+                        break
+                    }
+                }
+
+                stopGetLocation()
             }
-            addOnFailureListener {
+        }
+    }
+
+    fun initGetLocation() {
+        // Initialize get location, check if gps is enabled, if true then start get location
+        locationSettingsResponseTask = LocationServices.getSettingsClient(activity).checkLocationSettings(builder.build()).apply {
+            this.addOnSuccessListener {
+                startGetLocation()
+            }
+            this.addOnFailureListener {
                 if (it is ResolvableApiException) {
                     try {
                         it.startResolutionForResult(activity,
-                                REQUEST_CHECK_SETTINGS)
+                                GpsHandler.REQUEST_CHECK_SETTINGS)
                     } catch (sendEx: IntentSender.SendIntentException) {
-                        onFailureGetLocation()
+                        onFailureGetLocation(sendEx.localizedMessage)
                     }
 
                 } else {
-                    onFailureGetLocation()
+                    activity.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                    Toast.makeText(activity, activity.getString(R.string.failed_turn_on_request_gps), Toast.LENGTH_SHORT).show()
                 }
             }
         }
     }
 
+    fun startGetLocation(){
+        mFusedLocationClient
+                .removeLocationUpdates(mLocationCallback)
+                .addOnCompleteListener {
+                    var looper = Looper.myLooper()
+                    if (looper == null) {
+                        looper = Looper.getMainLooper()
+                    }
 
+                    mFusedLocationClient.requestLocationUpdates(
+                            locationRequest,
+                            mLocationCallback,
+                            looper)
+                }
+    }
+
+    private fun stopGetLocation(){
+        mFusedLocationClient.removeLocationUpdates(mLocationCallback)
+    }
 }

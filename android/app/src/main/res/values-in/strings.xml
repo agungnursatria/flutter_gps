@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="failed_turn_on_request_gps">Nyalakan GPS untuk mulai mendaftar</string>
+</resources>
