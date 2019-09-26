@@ -34,7 +34,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         when (requestCode){
-            GpsHandler.REQUEST_CHECK_SETTINGS -> if (resultCode == Activity.RESULT_CANCELED) Toast.makeText(this, getString(R.string.failed_turn_on_request_gps), Toast.LENGTH_SHORT).show() else if (resultCode == Activity.RESULT_OK) gpsHandler!!.locService.startGetLocation()
+            GpsHandler.REQUEST_CHECK_SETTINGS -> if (resultCode == Activity.RESULT_CANCELED) Toast.makeText(this, getString(R.string.failed_turn_on_request_gps), Toast.LENGTH_SHORT).show() else if (resultCode == Activity.RESULT_OK) gpsHandler!!.getLocation()
             else -> super.onActivityResult(requestCode, resultCode, data)
         }
     }

@@ -75,7 +75,7 @@ class GpsHandler(private val activity: Activity) {
         onFailureGetLocation = { errorMessage -> result.error("ERROR", errorMessage, null) }
     }
 
-    private fun getLocation(){
+    fun getLocation(){
         if (Helper.isGooglePlayServicesAvailable(activity)){
             locService = LocationUpdateUsingLocationService(activity, onSuccessGetLocation, onFailureGetLocation)
             locService.initGetLocation()
@@ -146,7 +146,7 @@ class LocationUpdateUsingLocationService(private val activity: Activity, private
         }
     }
 
-    fun startGetLocation(){
+    private fun startGetLocation(){
         mFusedLocationClient
                 .removeLocationUpdates(mLocationCallback)
                 .addOnCompleteListener {
