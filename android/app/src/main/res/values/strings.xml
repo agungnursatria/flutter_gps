@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="failed_turn_on_request_gps">Turn on gps to start register</string>
+    <string name="warning_register_failed_turn_on_request_gps">Turn on gps to start register</string>
+    <string name="warning_request_permission_gps">Permission to access location is required</string>
+    <string name="warning_inadequate_location">Location settings are inadequate, check your location settings.</string>
 </resources>

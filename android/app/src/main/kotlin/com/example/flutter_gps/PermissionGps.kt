@@ -1,18 +1,23 @@
 package com.example.flutter_gps
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
 import android.content.IntentSender
 import android.content.pm.PackageManager
+import android.location.*
+import android.location.LocationListener
 import android.os.Build
+import android.os.Bundle
 import android.os.Looper
 import android.provider.Settings
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import com.example.flutter_gps.helper.Helper
-import com.example.flutter_gps.model.Location
+import com.example.flutter_gps.model.Loc
 import com.google.android.gms.common.api.ResolvableApiException
+import com.google.android.gms.common.util.Strings
 import com.google.android.gms.location.*
 import com.google.android.gms.tasks.Task
 import io.flutter.plugin.common.MethodChannel
@@ -31,6 +36,7 @@ class GpsHandler(private val activity: Activity) {
     lateinit var onFailureGetLocation: (String) -> Unit
 
     lateinit var locService: LocationUpdateUsingLocationService
+    lateinit var locManager: LocationUpdateUsingLocationManager
 
     fun onMethodGetCurrentLocation(result: MethodChannel.Result, requestCode: Int) {
         initGetCurrentLocationResult(result)
@@ -71,16 +77,118 @@ class GpsHandler(private val activity: Activity) {
     }
 
     private fun initGetCurrentLocationResult(result: MethodChannel.Result) {
-        onSuccessGetLocation = { lat, long -> result.success(Location(lat, long).toString()) }
+        onSuccessGetLocation = { lat, long -> result.success(Loc(lat, long).toString()) }
         onFailureGetLocation = { errorMessage -> result.error("ERROR", errorMessage, null) }
     }
 
-    fun getLocation(){
-        if (Helper.isGooglePlayServicesAvailable(activity)){
+    fun getLocation() {
+        if (Helper.isGooglePlayServicesAvailable(activity)) {
             locService = LocationUpdateUsingLocationService(activity, onSuccessGetLocation, onFailureGetLocation)
             locService.initGetLocation()
         } else {
-            onFailureGetLocation("Has not been implemented")
+            locManager = LocationUpdateUsingLocationManager(activity, permissionGps, onSuccessGetLocation, onFailureGetLocation)
+            locManager.startGetLocation()
+        }
+    }
+}
+
+class LocationUpdateUsingLocationManager(private val activity: Activity, private val permissionGps: Boolean, private val onSuccessGetLocation: (Double, Double) -> Unit, private val onFailureGetLocation: (String) -> Unit) : LocationListener {
+
+    private var mActiveProvider: String? = null
+    private var currentLocation: Location? = null
+
+    lateinit var locationManager: LocationManager
+
+    @SuppressLint("MissingPermission")
+    fun startGetLocation() {
+        locationManager = activity.getSystemService(Activity.LOCATION_SERVICE) as LocationManager
+
+        // Make sure we remove existing listeners before we register a new one
+        locationManager.removeUpdates(this)
+
+        // Try to get the best possible location provider for the requested accuracy
+        mActiveProvider = getBestProvider(locationManager)
+
+        if (mActiveProvider.isNullOrEmpty()) {
+            onFailureGetLocation(activity.getString(R.string.warning_inadequate_location))
+            return
+        }
+
+        if (!permissionGps) {
+            onFailureGetLocation(activity.getString(R.string.warning_request_permission_gps))
+            return
+        }
+
+        currentLocation = locationManager.getLastKnownLocation(mActiveProvider)
+
+        // If we are listening to multiple location updates we can go ahead
+        // and report back the last known location (if we have one).
+        currentLocation?.let {
+            onSuccessGetLocation(it.latitude, it.longitude)
+            return
+        }
+
+
+        var looper = Looper.myLooper()
+        if (looper == null) {
+            looper = Looper.getMainLooper()
+        }
+
+        locationManager.requestLocationUpdates(
+                mActiveProvider,
+                0,
+                0f,
+                this,
+                looper)
+    }
+
+    fun stopGetLocation() {
+        locationManager.removeUpdates(this)
+    }
+
+    private fun getBestProvider(locationManager: LocationManager): String? {
+        val criteria = Criteria()
+
+        criteria.isBearingRequired = false
+        criteria.isAltitudeRequired = false
+        criteria.isSpeedRequired = false
+        criteria.accuracy = Criteria.ACCURACY_FINE
+        criteria.horizontalAccuracy = Criteria.ACCURACY_HIGH
+        criteria.powerRequirement = Criteria.POWER_HIGH
+
+        var provider = locationManager.getBestProvider(criteria, true)
+
+        if (Strings.isEmptyOrWhitespace(provider)) {
+            val providers = locationManager.getProviders(true)
+            if (providers != null && providers.size > 0)
+                provider = providers[0]
+        }
+
+        return provider
+    }
+
+    override fun onLocationChanged(location: Location?) {
+        currentLocation = location
+        currentLocation?.let {
+            onSuccessGetLocation(it.latitude, it.longitude)
+            stopGetLocation()
+        }
+    }
+
+    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
+        if (status == LocationProvider.AVAILABLE) {
+            onProviderEnabled(provider)
+        } else if (status == LocationProvider.OUT_OF_SERVICE) {
+            onProviderDisabled(provider)
+        }
+    }
+
+    override fun onProviderEnabled(provider: String?) {
+    }
+
+    override fun onProviderDisabled(provider: String?) {
+        if (provider == mActiveProvider) {
+            onFailureGetLocation("Error updating location: The active location provider was disabled. Check if the location services are enabled in the device settings.")
         }
     }
 }
@@ -140,13 +248,13 @@ class LocationUpdateUsingLocationService(private val activity: Activity, private
 
                 } else {
                     activity.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
-                    Toast.makeText(activity, activity.getString(R.string.failed_turn_on_request_gps), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(activity, activity.getString(R.string.warning_register_failed_turn_on_request_gps), Toast.LENGTH_SHORT).show()
                 }
             }
         }
     }
 
-    private fun startGetLocation(){
+    private fun startGetLocation() {
         mFusedLocationClient
                 .removeLocationUpdates(mLocationCallback)
                 .addOnCompleteListener {
@@ -162,7 +270,7 @@ class LocationUpdateUsingLocationService(private val activity: Activity, private
                 }
     }
 
-    private fun stopGetLocation(){
+    private fun stopGetLocation() {
         mFusedLocationClient.removeLocationUpdates(mLocationCallback)
     }
 }
